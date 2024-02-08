@@ -1,0 +1,11 @@
+Error_elease is not valid yet
+e: release file for http://ports.ubuntu.com/ubuntu-ports/dists/jammy-updates/inrelease is not valid yet (invalid for another 1d 23h 31min 57s). updates for this repository will not be applied.
+
+리눅스의 시간과 현재 시간이 맞지 않기 때문에 발생한 에러같다.
+
+sudo hwclock --hctosys
+다음 명령어를 입력해주니 해결 되었다.
+
+https://askubuntu.com/questions/1096930/sudo-apt-update-error-release-file-is-not-yet-valid
+
+출처
