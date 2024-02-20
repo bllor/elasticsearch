@@ -1,0 +1,140 @@
+section3
+
+--------------------------------------
+쿼리 라이트 인터페이스
+ADDRESS/index_name/_search?q=title:star
+ADDRESS/index_name/_search?q=title:star+year>2010 이런식으로 url에 파라미터를 붙혀서 사용할 수 있다.
+하지만 rest api로 통신하려고 하면 인코딩을 해주어야 한다.
+
+위와 같이 쓰는 것이 쿼리 라이트인 것 같은데
+쿼리 라이트로 모든 것을 보낼 경우 다른 사용자가 악용할 수 있고,
+디버깅하기도 힘드므로 json형태로 보내는 것이 좋다.
+실무에서 사용하지 않는 것이 좋다.
+
+--------------------------------------
+JSON 검색
+[쿼리라이트]
+curl -XGET 127.0.0.1:9200/movies/_search?q=title:star
+
+[json]
+curl -XGET 127.0.0.1:9200/movies/_search? -d'
+{
+	"query": {
+		"match": {
+			"title": "star"
+			}
+		}
+}
+'
+
+쿼리 내에서 할 수 있는 작업은 filter를 만들 수 있다.
+
+[json]
+curl -XGET 127.0.0.1:9200/movies/_search? -d'
+{
+	"query": {
+		"bool": {
+			"must": {"term": {"title": "trek"}},
+			"filter": {"range": {"year": {"gte": 2010}}}
+}'
+bool은 여러가지 결합할 수 있다는 뜻
+and == must must에 해당하는 내용이 있어야 한다는 뜻
+filter의 종류 
+terms: 정확하게 일치해야지만 결과 출력
+range: 범위를 나타낸다.
+exists: 필드가 있을 때만 출력됨
+missing: 지정된 필터가 없는 문서를 출력
+bool: 필터를 합칠 수 있게 해준다.
+
+--------------------------------------
+구문 매치
+_search? -d '{"query":{"match_phrase": {"title": "star wars"}}}'을 할경우
+단어가 아닌 구문으로 매치할 수 있다.
+
+star sun wars도 검색 허용하고 싶으면
+_search? -d '{"query":{"match_phrase": {"query": {"title": "star wars", "slop": 1}}}}'을 하면 된다.
+slop 1을 할경우 검색어에 다양한 단어들을 넣어보거나 반대로 사용하기도 한다.
+slop 100을 할경우, 그와 관련된 모든 단어들이 나오므로 데이터가 엄청 많이 나올 것이다.
+
+
+1980년 이후에 개봉한 스타워즈를 검색하려면?
+curl -XGET 127.0.0.1:9200/movies/_search?pretty -d'
+{
+"query": {
+"bool": {
+"must": {"match_phrase": {"title": "Star Wars"}},
+"filter": {"range": {"year": {"gte": 1980}}}
+}
+}
+}
+'
+
+--------------------------------------
+페이징
+쿼리에서 사이즈를 주면됨
+시작점은 0
+
+from=3 size=3 4번째 데이터(=number:3)부터 3개인 4,5,6을 보여준다.
+
+_search? -d '{"from": 2, "size": 2, "query":{"match_phrase": {"title": "star wars"}}}'
+
+또는
+
+_search?size=2&from-2&pretty -d '{"from": 2, "size": 2, "query":{"match_phrase": {"title": "star wars"}}}'할 경우
+
+3,4번째 데이터를 보여준다.
+
+페이징 처리를 하게 되면 성능저하가 있을 수 있다.
+그러므로 상한선을 정하는 것이 중요하다.
+
+--------------------------------------
+정렬
+search?sort=year year로 정렬해준다.
+text형식은 정렬될 수 없는데, 정렬에 사용할 경우 raw 데이터로 keyword형식을 만들어서 사용한다.
+
+curl -XPUT 127.0.0.1:9200/movies/ -d '
+{
+"mappings": {
+"properties": {
+"title": {
+"type": "text",
+"fields": {
+"raw": {
+"type": "keyword"
+}
+}
+}
+}
+}
+}'
+
+2010년에서 2015년이전에 개봉한 영화중 sci-fi장르인데 제목이름에 trek이 들어가지 않는 영화 조회
+curl -XGET 127.0.0.1:9200/movies/_search?pretty -d '
+{
+"query": {
+"bool": {
+"must": {"match": {"gnere": "Sci-Fi"}},
+"must-not": {"match": {"title": "trek"}},
+"filter": {"range": {"year": {"gte": 2010, "lt": 2015}}}
+}
+}
+}'
+
+
+1960년 이전에 개봉한 영화 중 과학소설장르인 소설을 정렬하시오.
+
+curl -XPUT 127.0.0.1:9200/movies/ -d '
+{"mappings": {"properties": {"title": {"type":"text", "fields": {"raw": {"type": "keyword"}}}}}}
+
+
+curl -XGET 127.0.0.1:9200/movies/_search?sort=title.raw -d '
+{
+"query": {
+"bool": {
+"must": {"match": {"genre": "sci-fi"}},
+"filter": {"range": {"year": {"lt": 1960}}}
+}}}'
+
+
+
+
