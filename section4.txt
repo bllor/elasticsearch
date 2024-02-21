@@ -1,0 +1,232 @@
+section4
+
+-------------------------
+스크립트를 사용하여 데이터 가져오기
+
+데이터를 가져오는 방법
+1.스크립트 2. logstash or beats 3.aws lambda kinesis firehouse 4. kafka, spark. etc
+
+---------------------------
+logstash
+데이터를 가져와서 DB같은 곳에 넣을 수 있게 도와준다.
+
+데이터 구조화 가능
+IP정보만 가지고 그 정보가 어디서 나왔는지 알 수 있는 geo-location 지원
+
+데이터 가져오는 과정
+
+1.웹서버 호스트에 filebeat 설치
+filebeat는 데이터를 logstash에 전송
+logstash는 작업을 끝낸 후 엘라스틱 서치에 저장
+
+logstash 다운로드
+sudo apt install openjdk-8-jre-headless
+sudo apt-get update
+sudo apt-get install logstash
+wget media.sundog-soft.com/es/access_log
+sudo nano /etc/logstash/conf.d/logstash.conf
+logstash.conf에는 다음을 입력한다.
+*acess_log는 인강 강사님꺼 다운 받았음
+input {
+        file {
+                path => "/home/dongil/access_log"
+                start_position => "beginning"
+        }
+}
+
+filter {
+        grok {
+                match => {"message" => "%{COMBINEDAPACHELOG}"}
+        }
+        date {
+                match => ["timestamp", "dd/MMM/yyyy:HH:mm:ss Z"]
+        }
+}
+
+output {
+        elasticsearch {
+                hosts => ["localhost:9200"]
+        }
+        stdout {
+                codec => rubydebug
+        }
+}
+cd /usr/share/logstash/
+sudo bin/logstash -f /etc/logstash/conf.d/logstash.conf 
+
+----------------------------
+mysql 다운로드 및 데이터 가져오기
+1.sudo apt-get install mysql-server
+2.wget http://files.grouplens.org/datasets/movielens/ml-100k.zip
+3.unzip ml-100k
+4.sudo mysql -u root -p
+5. movielens database & movies table 생성
+6. ml-100k파일 추가
+7. username & password 지정
+8. wget https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-j-8.3.0.zip
+9. unzip mysql-connector-j-8.3.0.zip
+10.sudo nano /etc/logstash/conf.d/mysql.conf
+11.해당 내용 입력
+input   {
+        jdbc    {
+                jdbc_connection_string => "jdbc:mysql://localhost:3306/movielens"
+                jdbc_user => "dongil"
+                jdbc_password => "0105"
+                jdbc_driver_library => "/home/dongil/mysql-connector-j-8.3.0/mysql-connector-j-8.3.0.jar"
+                jdbc_driver_class => "com.mysql.jdbc.Driver"
+                statement => "SELECT * FROM movies"
+        }
+}
+
+output {
+        stdout { codec => json_lines }
+        elasticsearch {
+                        hosts => ["localhost:9200"]
+                        index => "movielens-sql"
+        }
+}
+12. cd /usr/share/logstash/
+13. sudo bin/logstash -f /etc/logstash/conf.d/mysql.conf 
+
+--------------------
+csv 데이터 가져오기
+
+csv를 읽어올 때 엘라스틱 서치에서 version, @timestamp와 같은 값들을 임의로 추가하는데
+이를 제거하기 위해서는 
+csv를 읽는 로직을 만든 파일에서 
+mutate {
+	convert => {
+		remove_field => [제거할 필드 내용]
+	}
+}
+을 하면 제거할 수 있다.
+
+--------------------
+json 데이터 가져오기
+json.conf 파일에서 제외하고 싶은 단어도 제거할 수 있다.
+ex) json의 payment칼럼 중 mastercard를 제거하고, 다른 필드를 제거하려면
+
+[json.conf]
+filter {
+	if[paymentType] == "mastercard"{
+		drop()
+	}
+	mutate {
+		remove_field => [제거할 필드]
+	}	
+}
+
+json이 배열형태로 되어있는데 분리해서 저장하고 싶으면 filter에 추가하면 된다.
+ex) json의 칼럼 중 pastEvent가 배열형태로 되어 있다면
+[json.conf]
+
+filter{
+	spilt{
+		field => "[pastEvent]"
+	}
+}
+
+ex) json의 칼럼 중 pastEvent가 배열을 따로 저장하고, 
+[pastEvnet][eventID],[pastEvnet][transactionID]를 eventId, transactionId로 바꿀 때
+[json.conf]
+
+filter{
+	spilt{
+		field => "[pastEvent]"
+	}
+	mutate{
+		"eventId" => "%{[pastEvent][eventid]}"
+		"transactionId" => "%{[pastEvent][transactionid]}"
+	}
+}
+
+
+--------------------
+s3 -> elasticsearch
+1.accesslog 넣기
+2.IAM 에서 접근 권한 주기
+3.logstash.conf에
+s3 bucket access_key_id and key 입력
+
+
+--------------------
+grok을 이용한 logstash 구문 분석 및 필터링
+
+grok은 각 텍스트를 분석하고 지시한 패턴과 일치하는지 확인함으로써 동일한 작업을 수행
+grok은 정규식(regular expressions)을 찾는다.
+grok debug tool: grokdebug.herokuapp.com
+ex)로그를 날짜, 디버그레벨, 메시지로 구분하고 싶을 때
+filter {
+  grok {
+    match => { "message" => ['%{TIMESTAMP_ISO8601:time} %{LOGLEVEL:logLevel} %{GREEDYDATA:logMessage}'] }
+  }
+}
+
+ex)날짜, 디버그레벨, 메시지 말고 ip, httpMethod로 혼합되어 있으면,
+filter {
+  grok {
+    match => { "message" => ['%{TIMESTAMP_ISO8601:time} %{LOGLEVEL:logLevel} %{GREEDYDATA:logMessage}'], %{IP:ClientIP} %{WORD:httpMethod} }
+  }
+}
+처럼 나타내면, 다른 내용들도 분석할 수 있다.
+
+
+------------------
+입력 플러그인 - heartbeat
+logstash가 정상적으로 작동하고 있다는 것을 알려줌
+
+5초마다 메시지를 보내고 싶을 때
+input {
+  heartbeat {
+    message => "ok"
+    interval => 5
+    type => "heartbeat"
+  }
+}
+
+output {
+  if [type] == "heartbeat" {
+     elasticsearch {
+     hosts => "http://localhost:9200"
+     index => "heartbeat"
+         }
+  }
+ stdout {
+  codec => "rubydebug"
+  }
+
+}
+5초마다 hearbeat 인덱스에 신호를 보낸다.
+
+epoch추가
+
+input {
+  heartbeat {
+    message => "epoch"
+    interval => 5
+    type => "heartbeat"
+  }
+}
+
+output {
+  if [type] == "heartbeat" {
+     elasticsearch {
+     hosts => "http://localhost:9200"
+     index => "heartbeat_epoch"
+         }
+  }
+ stdout {
+  codec => "rubydebug"
+  }
+
+}
+
+-->clock이 epoch로 출력된다.
+
+*
+message를 sequence로 할 경우 번호가 만들어 진다.
+
+
+
+
+

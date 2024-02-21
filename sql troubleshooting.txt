@@ -1,0 +1,17 @@
+linux mysql 문제 해결
+
+ERROR 3948 (42000): Loading local data is disabled; this must be enabled on both the client and server sides
+
+-->SET GLOBAL local_infile = true;
+
+ERROR 2068 (HY000): LOAD DATA LOCAL INFILE file request rejected due to restrictions on access.
+
+-->sudo mysql --local-infile=1  -u root -p
+
+mysql> LOAD DATA LOCAL INFILE 'ml-100k/u.item' INTO TABLE movielens.movies FIELDS TERMINATED BY '|' (movieID, title, @var3) set releaseDate = STR_TO_DATE(@var3, '%d-%M-%Y');
+을 했을 때,
+ERROR 1300 (HY000): Invalid utf8mb4 character string: '' 발생
+
+--> mysql> load data local infile 'ml-100k/u.item' into table movielens.movies character set euckr fields terminated by '|' (movieID, title, @var3) set releaseDate = STR_TO_DATE(@var3, '%d-%M-%Y');
+
+character set euckr 이 부분 추가
